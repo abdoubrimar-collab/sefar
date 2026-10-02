@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة المدير</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #111827;
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .panel {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+      margin-bottom: 22px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      text-align: right;
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    button {
+      padding: 9px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .success {
+      background: #22c55e;
+      color: white;
+    }
+    .danger {
+      background: #ef4444;
+      color: white;
+    }
+    .small {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .active {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .inactive {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .logout {
+      background: #ef4444;
+      color: white;
+      padding: 10px 14px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .stat-box {
+      background: white;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .stat-box strong {
+      display: block;
+      font-size: 28px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>لوحة المدير</div>
+      <button class="logout" onclick="logout()">تسجيل الخروج</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box">
+        <div>إجمالي المتاجر</div>
+        <strong id="totalMerchants">0</strong>
+      </div>
+      <div class="stat-box">
+        <div>متاجر فعالة</div>
+        <strong id="activeMerchants">0</strong>
+      </div>
+      <div class="stat-box">
+        <div>الطلبات</div>
+        <strong id="totalOrders">0</strong>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>إدارة المتاجر</h2>
+      <div id="merchantsList"></div>
+    </div>
+
+    <div class="panel">
+      <h2>الطلبات الأخيرة</h2>
+      <div id="ordersList"></div>
+    </div>
+  </div>
+
+  <script>
+    const supabase = window.supabase.createClient(
+      window.SEFAR.supabaseUrl,
+      window.SEFAR.supabaseKey
+    );
+
+    async function ensureAdmin() {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        window.location.href = "login.html";
+        return false;
+      }
+
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profileError || !data || data.role !== "admin") {
+        alert("ليس لديك صلاحية الدخول إلى لوحة المدير");
+        window.location.href = "login.html";
+        return false;
+      }
+
+      return true;
+    }
+
+    async function loadStats() {
+      const { data: merchants, error: merchantsError } = await supabase
+        .from("profiles")
+        .select("id, active");
+
+      if (!merchantsError && merchants) {
+        const activeCount = merchants.filter(m => m.active).length;
+        document.getElementById("totalMerchants").textContent = merchants.length;
+        document.getElementById("activeMerchants").textContent = activeCount;
+      }
+
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select("id");
+
+      if (!ordersError && orders) {
+        document.getElementById("totalOrders").textContent = orders.length;
+      }
+    }
+
+    async function loadMerchants() {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      const merchantsList = document.getElementById("merchantsList");
+
+      if (error) {
+        merchantsList.innerHTML = "خطأ: " + error.message;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        merchantsList.innerHTML = "<p>لا توجد متاجر.</p>";
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>اسم المتجر</th>
+              <th>البريد</th>
+              <th>الهاتف</th>
+              <th>الحالة</th>
+              <th>رابط المتجر</th>
+              <th>الإجراء</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const merchant of data) {
+        const statusClass = merchant.active ? "active" : "inactive";
+        const statusText = merchant.active ? "فعال" : "متوقف";
+        const storeUrl = `merchant-landing.html?merchant_id=${merchant.id}`;
+
+        html += `
+          <tr>
+            <td>${merchant.store_name || "بدون اسم"}</td>
+            <td>${merchant.email || "-"}</td>
+            <td>${merchant.phone || "-"}</td>
+            <td><span class="status ${statusClass}">${statusText}</span></td>
+            <td><a href="${storeUrl}" target="_blank">فتح المتجر</a></td>
+            <td>
+              <button class="${merchant.active ? 'small' : 'success'}"
+                      onclick="toggleMerchant('${merchant.id}', ${merchant.active})">
+                ${merchant.active ? "إيقاف" : "تفعيل"}
+              </button>
+            </td>
+          </tr>
+        `;
+      }
+
+      html += "</tbody></table>";
+      merchantsList.innerHTML = html;
+    }
+
+    async function toggleMerchant(merchantId, currentActive) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ active: !currentActive })
+        .eq("id", merchantId);
+
+      if (error) {
+        alert("خطأ في تحديث المتجر: " + error.message);
+      } else {
+        loadMerchants();
+        loadStats();
+      }
+    }
+
+    async function loadOrders() {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      const ordersList = document.getElementById("ordersList");
+
+      if (error) {
+        ordersList.innerHTML = "خطأ: " + error.message;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        ordersList.innerHTML = "<p>لا توجد طلبات حتى الآن.</p>";
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>العميل</th>
+              <th>الهاتف</th>
+              <th>المتجر</th>
+              <th>الكمية</th>
+              <th>المجموع</th>
+              <th>الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const order of data) {
+        const { data: merchantData } = await supabase
+          .from("profiles")
+          .select("store_name")
+          .eq("id", order.merchant_id)
+          .single();
+
+        const merchantName = merchantData ? merchantData.store_name : "غير معروف";
+
+        html += `
+          <tr>
+            <td>${order.customer_name}</td>
+            <td>${order.phone}</td>
+            <td>${merchantName}</td>
+            <td>${order.qty}</td>
+            <td>${order.total} دج</td>
+            <td>${order.status}</td>
+          </tr>
+        `;
+      }
+
+      html += "</tbody></table>";
+      ordersList.innerHTML = html;
+    }
+
+    async function logout() {
+      const { error } = await supabase.auth.signOut();
+      if (!error) {
+        window.location.href = "login.html";
+      }
+    }
+
+    (async function init() {
+      const ok = await ensureAdmin();
+      if (!ok) return;
+
+      await loadStats();
+      await loadMerchants();
+      await loadOrders();
+    })();
+  </script>
+</body>
+</html>
