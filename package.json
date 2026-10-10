@@ -1,0 +1,21 @@
+{
+  "name": "sefar",
+  "version": "1.0.0",
+  "description": "Sefar — صفحات الطلب للتجار",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp public/icon-192.png public/icon-512.png public/manifest.json public/sw.js public/ideas-data.js dist/ 2>/dev/null; cp _redirects dist/ 2>/dev/null; true"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "lucide-react": "^1.54.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4"
+  }
+}
